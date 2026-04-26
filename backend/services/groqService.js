@@ -189,6 +189,8 @@ Do not invent claims that are not supported by the reviews.
 If evidence is weak, say so.
 Mention any grading policy found in the reviews in the overview.
 Keep the tone casual, readable, and student-friendly.
+Keep each review concise. 
+Three sentences max.
 
 Professor: ${bundle.profName}
 Overall rating: ${bundle.rating ?? "Unknown"}
