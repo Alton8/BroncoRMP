@@ -123,7 +123,7 @@ async function generateJson({ prompt, schema, temperature = 0 }) {
     }
   });
 
-  const text = response.text;
+  const text = response.text();
   if (!text) throw new Error("Gemini returned an empty response");
 
   return JSON.parse(text);
