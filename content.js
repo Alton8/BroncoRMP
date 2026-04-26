@@ -103,11 +103,11 @@ function buildRatingText(data) {
 }
 
 function ensureSummaryModal() {
-  let overlay = document.getElementById("broncosort-summary-overlay");
+  let overlay = document.getElementById("classview-summary-overlay");
   if (overlay) return overlay;
 
   overlay = document.createElement("div");
-  overlay.id = "broncosort-summary-overlay";
+  overlay.id = "classview-summary-overlay";
 
   Object.assign(overlay.style, {
     position: "fixed",
@@ -120,7 +120,7 @@ function ensureSummaryModal() {
   });
 
   overlay.innerHTML = `
-    <div class="broncosort-summary-modal" role="dialog" aria-modal="true" aria-label="Professor summary"
+    <div class="classview-summary-modal" role="dialog" aria-modal="true" aria-label="Professor summary"
       style="
         width:min(760px, 92vw);
         max-height:85vh;
@@ -131,14 +131,14 @@ function ensureSummaryModal() {
         padding:20px;
         font-family:Arial, sans-serif;
       ">
-      <div class="broncosort-summary-header"
+      <div class="classview-summary-header"
         style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:12px;">
         <div>
-          <div class="broncosort-summary-title" style="font-size:22px; font-weight:700; color:#1f3b64;">Overview</div>
-          <div id="broncosort-summary-subtitle" class="broncosort-summary-subtitle"
+          <div class="classview-summary-title" style="font-size:22px; font-weight:700; color:#1f3b64;">Overview</div>
+          <div id="classview-summary-subtitle" class="classview-summary-subtitle"
             style="font-size:14px; color:#5b6b7f; margin-top:4px;"></div>
         </div>
-        <button id="broncosort-summary-close" type="button"
+        <button id="classview-summary-close" type="button"
           style="
             border:none;
             background:transparent;
@@ -149,22 +149,22 @@ function ensureSummaryModal() {
           ">×</button>
       </div>
 
-      <div id="broncosort-tab-bar"
+      <div id="classview-tab-bar"
         style="display:flex; gap:4px; margin-bottom:16px; border-bottom:2px solid #e3e8ef; padding-bottom:0;">
-        <button id="broncosort-tab-summary" type="button"
+        <button id="classview-tab-summary" type="button"
           style="
             background:none; border:none; padding:8px 16px; font-size:14px; font-weight:600;
             cursor:pointer; color:#1f3b64; border-bottom:2px solid #1f3b64; margin-bottom:-2px;
           ">Summary</button>
-        <button id="broncosort-tab-wordcloud" type="button"
+        <button id="classview-tab-wordcloud" type="button"
           style="
             background:none; border:none; padding:8px 16px; font-size:14px; font-weight:600;
             cursor:pointer; color:#5b6b7f; border-bottom:2px solid transparent; margin-bottom:-2px;
           ">Word Cloud ☁️</button>
       </div>
 
-      <div id="broncosort-summary-body" class="broncosort-summary-body"></div>
-      <div id="broncosort-wordcloud-body" style="display:none;"></div>
+      <div id="classview-summary-body" class="classview-summary-body"></div>
+      <div id="classview-wordcloud-body" style="display:none;"></div>
     </div>
   `;
 
@@ -174,15 +174,15 @@ function ensureSummaryModal() {
     if (e.target === overlay) overlay.style.display = "none";
   });
 
-  overlay.querySelector("#broncosort-summary-close").addEventListener("click", () => {
+  overlay.querySelector("#classview-summary-close").addEventListener("click", () => {
     overlay.style.display = "none";
   });
 
   // Tab switching
-  const tabSummary = overlay.querySelector("#broncosort-tab-summary");
-  const tabWordCloud = overlay.querySelector("#broncosort-tab-wordcloud");
-  const summaryBody = overlay.querySelector("#broncosort-summary-body");
-  const wordcloudBody = overlay.querySelector("#broncosort-wordcloud-body");
+  const tabSummary = overlay.querySelector("#classview-tab-summary");
+  const tabWordCloud = overlay.querySelector("#classview-tab-wordcloud");
+  const summaryBody = overlay.querySelector("#classview-summary-body");
+  const wordcloudBody = overlay.querySelector("#classview-wordcloud-body");
 
   tabSummary.addEventListener("click", () => {
     summaryBody.style.display = "";
@@ -224,7 +224,7 @@ function sectionHtml(title, value) {
     : `<p style="margin:8px 0 0 0; line-height:1.5;">${value || "Not enough review data"}</p>`;
 
   return `
-    <section class="broncosort-summary-section"
+    <section class="classview-summary-section"
       style="margin-bottom:16px; padding:14px; border:1px solid #e3e8ef; border-radius:12px; background:#fafcff;">
       <h4 style="margin:0; font-size:15px; color:#1f3b64;">${title}</h4>
       ${content}
@@ -332,11 +332,11 @@ function renderWordCloud(words, container) {
 
 async function openSummaryModal(professorName, ratingInfo = null) {
   const overlay = ensureSummaryModal();
-  const subtitle = overlay.querySelector("#broncosort-summary-subtitle");
-  const body = overlay.querySelector("#broncosort-summary-body");
-  const wordcloudBody = overlay.querySelector("#broncosort-wordcloud-body");
-  const tabSummary = overlay.querySelector("#broncosort-tab-summary");
-  const tabWordCloud = overlay.querySelector("#broncosort-tab-wordcloud");
+  const subtitle = overlay.querySelector("#classview-summary-subtitle");
+  const body = overlay.querySelector("#classview-summary-body");
+  const wordcloudBody = overlay.querySelector("#classview-wordcloud-body");
+  const tabSummary = overlay.querySelector("#classview-tab-summary");
+  const tabWordCloud = overlay.querySelector("#classview-tab-wordcloud");
 
   // Always reset to Summary tab when opening
   body.style.display = "";

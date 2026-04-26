@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "RMP Extension",
+  "name": "BroncoRMP",
   "version": "1.0",
   "permissions": ["storage"],
   "host_permissions": [
     "https://www.ratemyprofessors.com/*"
   ],
+  "icons": {
+    "128": "bronco_rmp_icon.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
