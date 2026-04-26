@@ -1,7 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 
 const STOP_WORDS = new Set([
-  // common english
   "the","a","an","and","or","but","in","on","of","to","is","it","he","she",
   "they","was","for","are","with","his","her","this","that","have","had",
   "not","be","been","from","at","by","we","my","i","you","your","very",
@@ -14,7 +13,6 @@ const STOP_WORDS = new Set([
   "down","well","been","see","him","may","back","use","two","long","know",
   "here","first","never","good","think","people","give","being","made","man",
   "many","same","still","between","need","while","through","come","during",
-  // rmp-specific noise words
   "class","course","professor","prof","teacher","lecture","lectures","student",
   "students","semester","quarter","test","tests","exam","exams","grade","grades",
   "homework","assignment","assignments","syllabus","office","hours","going","take",
@@ -23,7 +21,13 @@ const STOP_WORDS = new Set([
   "bad","good","okay","fine","just","make","makes","made","help","helps","helped",
   "know","knew","things","thing","back","look","looks","every","always","never",
   "sometimes","often","enough","kind","want","wanted","needs","needed","comes",
-  "come","came","goes","went","gone","keep","kept","give","gave","given"
+  "come","came","goes","went","gone","keep","kept","give","gave","given",
+  // additional vague words not worth showing in a word cloud
+  "stuff","something","anything","everything","nothing","someone","anyone",
+  "everyone","person","people","way","ways","part","parts","point","points",
+  "matter","reason","sense","place","time","times","work","works","worked",
+  "learn","learned","learning","understand","understood","study","studied",
+  "material","content","information","info","review","reviews","rating"
 ]);
 
 const POSITIVE_WORDS = new Set([
@@ -31,63 +35,66 @@ const POSITIVE_WORDS = new Set([
   "clear","engaging","passionate","organized","fair","knowledgeable","caring",
   "enthusiastic","effective","understanding","patient","inspiring","thorough",
   "responsive","accommodating","interesting","supportive","flexible","best",
-  "loves","enjoyed","recommend","curves","extra","credit","straightforward",
-  "easy","lenient","funny","entertaining","available","approachable"
+  "loves","enjoyed","recommend","curved","extra","credit","straightforward",
+  "lenient","funny","entertaining","available","approachable","generous","kind"
 ]);
 
 const NEGATIVE_WORDS = new Set([
   "boring","confusing","difficult","harsh","unfair","disorganized","unclear",
-  "terrible","awful","useless","rude","unhelpful","avoid","worst","hard",
-  "strict","unresponsive","slow","monotone","dry","frustrating","stressful",
-  "curve","tough","unprepared","inconsistent","disappointing","lost","fails",
-  "curved","unclear","disorganized","heavy","overwhelming","impossible","steep"
+  "terrible","awful","useless","rude","unhelpful","avoid","worst","strict",
+  "unresponsive","slow","monotone","dry","frustrating","stressful","tough",
+  "unprepared","inconsistent","disappointing","lost","fails","heavy",
+  "overwhelming","impossible","steep","rushed","vague","repetitive","dull"
 ]);
 
 const SUMMARY_SCHEMA = {
   type: "object",
   properties: {
-    overview: { type: "string" },
-    teachingStyle: { type: "string" },
-    workloadAndGrading: { type: "string" },
-    studentTips: { type: "string" },
-    bestFit: { type: "string" },
-    pros: {
-      type: "array",
-      items: { type: "string" }
-    },
-    cons: {
-      type: "array",
-      items: { type: "string" }
-    },
-    confidenceNote: { type: "string" }
+    overview:          { type: "string" },
+    teachingStyle:     { type: "string" },
+    workloadAndGrading:{ type: "string" },
+    studentTips:       { type: "string" },
+    bestFit:           { type: "string" },
+    pros:              { type: "array", items: { type: "string" } },
+    cons:              { type: "array", items: { type: "string" } },
+    confidenceNote:    { type: "string" }
   },
   required: [
-    "overview",
-    "teachingStyle",
-    "workloadAndGrading",
-    "studentTips",
-    "bestFit",
-    "pros",
-    "cons",
-    "confidenceNote"
+    "overview","teachingStyle","workloadAndGrading",
+    "studentTips","bestFit","pros","cons","confidenceNote"
   ]
 };
 
-const WORD_FILTER_SCHEMA = {
-  type: "object",
-  properties: {
-    keepWords: {
-      type: "array",
-      items: { type: "string" }
-    }
-  },
-  required: ["keepWords"]
-};
+// In-memory cache: profId -> { summary, wordFrequency, ts }
+const cache = new Map();
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+function getCached(profId) {
+  const entry = cache.get(profId);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    cache.delete(profId);
+    return null;
+  }
+  return entry;
+}
+
+function setCached(profId, data) {
+  // Evict oldest if cache grows large
+  if (cache.size > 200) {
+    const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+    cache.delete(oldest[0]);
+  }
+  cache.set(profId, { ...data, ts: Date.now() });
+}
+
+let _ai = null;
 function getGeminiClient() {
+  if (_ai) return _ai;
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
+  _ai = new GoogleGenAI({ apiKey });
+  return _ai;
 }
 
 function getModelName() {
@@ -96,25 +103,16 @@ function getModelName() {
 
 async function generateJson({ prompt, schema, temperature = 0 }) {
   const ai = getGeminiClient();
-  if (!ai) {
-    throw new Error("Missing GEMINI_API_KEY");
-  }
+  if (!ai) throw new Error("Missing GEMINI_API_KEY");
 
   const response = await ai.models.generateContent({
     model: getModelName(),
     contents: prompt,
-    config: {
-      temperature,
-      responseMimeType: "application/json",
-      responseSchema: schema
-    }
+    config: { temperature, responseMimeType: "application/json", responseSchema: schema }
   });
 
   const text = response.text;
-  if (!text) {
-    throw new Error("Gemini returned an empty response");
-  }
-
+  if (!text) throw new Error("Gemini returned an empty response");
   return JSON.parse(text);
 }
 
@@ -122,14 +120,7 @@ function extractWordFrequency(reviews) {
   const freq = {};
 
   for (const r of reviews) {
-    const rawText =
-      r?.text ||
-      r?.comment ||
-      r?.review ||
-      r?.reviewText ||
-      r?.description ||
-      "";
-
+    const rawText = r?.text || r?.comment || r?.review || r?.reviewText || r?.description || "";
     const words = rawText
       .toLowerCase()
       .replace(/[^a-z\s'-]/g, "")
@@ -138,140 +129,73 @@ function extractWordFrequency(reviews) {
       .map((w) => w.replace(/^-+|-+$/g, ""))
       .filter((w) => w.length > 3 && !STOP_WORDS.has(w));
 
-    for (const w of words) {
-      freq[w] = (freq[w] || 0) + 1;
-    }
+    for (const w of words) freq[w] = (freq[w] || 0) + 1;
   }
 
-  const result = Object.entries(freq)
+  return Object.entries(freq)
     .filter(([, count]) => count >= 2)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 60)
+    .slice(0, 50)
     .map(([word, count]) => ({
       word,
       count,
-      sentiment: POSITIVE_WORDS.has(word)
-        ? "positive"
-        : NEGATIVE_WORDS.has(word)
-        ? "negative"
+      sentiment: POSITIVE_WORDS.has(word) ? "positive"
+        : NEGATIVE_WORDS.has(word) ? "negative"
         : "neutral"
     }));
-
-  return result;
 }
 
 function buildPrompt(bundle) {
   const reviewLines = bundle.reviews
-    .slice(0, 15)
-    .map((r, i) => {
-      return [
+    .slice(0, 10)
+    .map((r, i) =>
+      [
         `Review ${i + 1}:`,
-        r.class ? `Course: ${r.class}` : "",
-        r.grade ? `Grade: ${r.grade}` : "",
-        r.attendance !== null && r.attendance !== undefined
-          ? `Attendance: ${r.attendance}`
-          : "",
-        r.wouldTakeAgain !== null && r.wouldTakeAgain !== undefined
-          ? `Would take again: ${r.wouldTakeAgain}`
-          : "",
+        r.class        ? `Course: ${r.class}` : "",
+        r.grade        ? `Grade: ${r.grade}` : "",
+        r.wouldTakeAgain != null ? `Would take again: ${r.wouldTakeAgain}` : "",
         `Text: ${r.text || ""}`
-      ]
-        .filter(Boolean)
-        .join("\n");
-    })
+      ].filter(Boolean).join("\n")
+    )
     .join("\n\n");
 
   return `
-You are summarizing professor reviews for students choosing classes.
-
-Use only the provided review data and metadata.
-Do not invent claims that are not supported by the reviews.
-If evidence is weak, say so.
-Mention any grading policy found in the reviews in the overview.
-Keep the tone casual, readable, and student-friendly.
-Keep each review concise. 
-Three sentences max.
+Summarize these professor reviews for students picking classes.
+Use only what the reviews say. If evidence is weak, say so.
+Mention grading policy if found. Keep it casual and student-friendly.
+Max 3 sentences per field.
 
 Professor: ${bundle.profName}
-Overall rating: ${bundle.rating ?? "Unknown"}
-Difficulty: ${bundle.difficulty ?? "Unknown"}
-Number of ratings: ${bundle.numRatings ?? 0}
+Rating: ${bundle.rating ?? "Unknown"} | Difficulty: ${bundle.difficulty ?? "Unknown"} | # Ratings: ${bundle.numRatings ?? 0}
 
-Reviews:
 ${reviewLines}
-
-Return ONLY valid JSON matching the required schema.
-Do not wrap the JSON in markdown.
 `.trim();
 }
 
 function fallbackSummary(bundle) {
   return {
-    overview: `Based on ${bundle.reviews.length} pulled reviews, there was not enough structured evidence to generate a strong AI summary.`,
-    teachingStyle: "Not enough review data",
+    overview: `Based on ${bundle.reviews.length} reviews, there was not enough evidence to generate a strong AI summary.`,
+    teachingStyle:      "Not enough review data",
     workloadAndGrading: "Not enough review data",
-    studentTips: "Not enough review data",
-    bestFit: "Not enough review data",
-    pros: ["Not enough review data"],
-    cons: ["Not enough review data"],
-    confidenceNote:
-      "Low confidence because review volume was limited or the AI response was unavailable."
+    studentTips:        "Not enough review data",
+    bestFit:            "Not enough review data",
+    pros:               ["Not enough review data"],
+    cons:               ["Not enough review data"],
+    confidenceNote:     "Low confidence — review volume was limited or AI was unavailable."
   };
 }
 
-function buildWordFilterPrompt(words, reviews) {
-  const reviewSamples = reviews
-    .slice(0, 10)
-    .map((r) => r.text || r.comment || r.review || "")
-    .filter(Boolean);
-
-  return `
-Filter a word cloud for professor reviews.
-
-Keep ONLY:
-- descriptive adjectives like clear, confusing, helpful, organized, difficult
-- meaningful academic nouns like projects, exams, labs, quizzes, grading
-
-REMOVE:
-- generic nouns like group, material, things, stuff, information
-- verbs like learn, understand, study
-- filler or vague words
-
-Goal: keep words that help a student quickly judge the professor.
-
-Candidate words:
-${JSON.stringify(words, null, 2)}
-
-Review samples:
-${JSON.stringify(reviewSamples, null, 2)}
-
-Return ONLY valid JSON matching the required schema.
-Do not wrap the JSON in markdown.
-`.trim();
-}
-
-async function filterWordFrequencyWithAI(words, reviews) {
-  if (!words?.length) return words;
-  if (!process.env.GEMINI_API_KEY) return words;
-
-  try {
-    const parsed = await generateJson({
-      prompt: buildWordFilterPrompt(words, reviews),
-      schema: WORD_FILTER_SCHEMA,
-      temperature: 0
-    });
-
-    const keepSet = new Set(parsed.keepWords || []);
-    return words.filter((w) => keepSet.has(w.word));
-  } catch (err) {
-    console.error("Gemini word filter failed:", err);
-    return words;
-  }
-}
-
 async function summarizeProfessorReviews(bundle) {
-  const rawWordFrequency = extractWordFrequency(bundle.reviews);
-  const wordFrequency = rawWordFrequency;
+  // Check cache first
+  const cacheKey = bundle.id ? String(bundle.id) : bundle.profName;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    console.log(`Cache hit for ${bundle.profName}`);
+    return cached;
+  }
+
+  // Word frequency is pure JS — always fast, run immediately
+  const wordFrequency = extractWordFrequency(bundle.reviews);
 
   if (!bundle.reviews.length) {
     return { ...fallbackSummary(bundle), wordFrequency };
@@ -279,13 +203,8 @@ async function summarizeProfessorReviews(bundle) {
 
   if (!process.env.GEMINI_API_KEY) {
     return {
-      overview: `Found ${bundle.reviews.length} reviews, but GEMINI_API_KEY is missing on the backend.`,
-      teachingStyle: "Not enough review data",
-      workloadAndGrading: "Not enough review data",
-      studentTips: "Not enough review data",
-      bestFit: "Not enough review data",
-      pros: ["Not enough review data"],
-      cons: ["Not enough review data"],
+      ...fallbackSummary(bundle),
+      overview: `Found ${bundle.reviews.length} reviews but GEMINI_API_KEY is missing.`,
       confidenceNote: "Add GEMINI_API_KEY to your environment variables and redeploy.",
       wordFrequency
     };
@@ -298,28 +217,24 @@ async function summarizeProfessorReviews(bundle) {
       temperature: 0.2
     });
 
-    return {
-      overview: parsed.overview || fallbackSummary(bundle).overview,
-      teachingStyle: parsed.teachingStyle || "Not enough review data",
-      workloadAndGrading:
-        parsed.workloadAndGrading || "Not enough review data",
-      studentTips: parsed.studentTips || "Not enough review data",
-      bestFit: parsed.bestFit || "Not enough review data",
-      pros: Array.isArray(parsed.pros)
-        ? parsed.pros.slice(0, 3)
-        : ["Not enough review data"],
-      cons: Array.isArray(parsed.cons)
-        ? parsed.cons.slice(0, 3)
-        : ["Not enough review data"],
-      confidenceNote: parsed.confidenceNote || "Moderate confidence.",
+    const result = {
+      overview:           parsed.overview           || fallbackSummary(bundle).overview,
+      teachingStyle:      parsed.teachingStyle      || "Not enough review data",
+      workloadAndGrading: parsed.workloadAndGrading || "Not enough review data",
+      studentTips:        parsed.studentTips        || "Not enough review data",
+      bestFit:            parsed.bestFit            || "Not enough review data",
+      pros:  Array.isArray(parsed.pros) ? parsed.pros.slice(0, 3) : ["Not enough review data"],
+      cons:  Array.isArray(parsed.cons) ? parsed.cons.slice(0, 3) : ["Not enough review data"],
+      confidenceNote:     parsed.confidenceNote     || "Moderate confidence.",
       wordFrequency
     };
+
+    setCached(cacheKey, result);
+    return result;
   } catch (error) {
     console.error("Gemini summarization error:", error);
     return { ...fallbackSummary(bundle), wordFrequency };
   }
 }
 
-module.exports = {
-  summarizeProfessorReviews,
-};
+module.exports = { summarizeProfessorReviews };
