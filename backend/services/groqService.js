@@ -222,7 +222,6 @@ async function summarizeProfessorReviews(bundle) {
     const completion = await groq.chat.completions.create({
       model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
       temperature: 0.2,
-      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
@@ -234,8 +233,29 @@ async function summarizeProfessorReviews(bundle) {
         }
       ]
     });
-
+    
     const raw = completion?.choices?.[0]?.message?.content || "";
+
+    console.log("Groq raw response:", raw);
+    
+    let parsed;
+    
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // try to fix common JSON issues
+      try {
+        const cleaned = raw
+          .replace(/```json/g, "")
+          .replace(/```/g, "")
+          .trim();
+    
+        parsed = JSON.parse(cleaned);
+      } catch (e2) {
+        console.error("Failed to parse Groq response:", raw);
+        return fallbackSummary(bundle);
+      }
+    }
     const parsed = JSON.parse(raw);
 
     return {
