@@ -161,7 +161,7 @@ function buildPrompt(bundle) {
 Summarize these professor reviews for students picking classes.
 Use only what the reviews say. If evidence is weak, say so.
 Mention grading policy if found. Keep it casual and student-friendly.
-Max 3 sentences per field.
+Max 3 concise sentences per field.
 
 Professor: ${bundle.profName}
 Rating: ${bundle.rating ?? "Unknown"} | Difficulty: ${bundle.difficulty ?? "Unknown"} | # Ratings: ${bundle.numRatings ?? 0}
@@ -231,4 +231,4 @@ async function summarizeProfessorReviews(bundle) {
   }
 }
 
-module.exports = { summarizeProfessorReviews, extractWordFrequency };
+module.exports = { summarizeProfessorReviews };
