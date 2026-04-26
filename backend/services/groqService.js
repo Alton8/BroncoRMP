@@ -231,4 +231,7 @@ async function summarizeProfessorReviews(bundle) {
   }
 }
 
-module.exports = { summarizeProfessorReviews };
+module.exports = {
+  summarizeProfessorReviews,
+  extractWordFrequency
+};
