@@ -162,7 +162,7 @@ function extractWordFrequency(reviews) {
 
 function buildPrompt(bundle) {
   const reviewLines = bundle.reviews
-    .slice(0, 40)
+    .slice(0, 15)
     .map((r, i) => {
       return [
         `Review ${i + 1}:`,
