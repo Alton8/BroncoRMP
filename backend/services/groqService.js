@@ -242,6 +242,8 @@ function buildCacheKey(bundle) {
   });
 }
 
+
+
 async function summarizeProfessorReviews(bundle) {
   const reviews = Array.isArray(bundle.reviews) ? bundle.reviews : [];
   const safeBundle = { ...bundle, reviews };
@@ -272,11 +274,15 @@ async function summarizeProfessorReviews(bundle) {
   }
 
   try {
+    console.log("Calling Gemini for", safeBundle.profName);
+
     const parsed = await generateJson({
       prompt: buildPrompt(safeBundle),
       schema: SUMMARY_SCHEMA,
       temperature: 0.2
     });
+
+    console.log("Gemini parsed summary:", parsed);
 
     const result = {
       overview: parsed.overview || fallbackSummary(safeBundle).overview,
@@ -292,13 +298,14 @@ async function summarizeProfessorReviews(bundle) {
     return result;
   } catch (error) {
     console.error("Gemini summarization error:", error);
+    console.error("Gemini summarization stack:", error?.stack);
+
     return {
       ...fallbackSummary(safeBundle),
       wordFrequency
     };
   }
 }
-
 module.exports = {
   summarizeProfessorReviews,
   extractWordFrequency
