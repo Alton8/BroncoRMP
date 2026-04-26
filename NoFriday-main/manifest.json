@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "RMP Extension",
+  "version": "1.0",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.ratemyprofessors.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["scrapr.js", "storage.js", "content.js"]
+    }
+  ]
+}
