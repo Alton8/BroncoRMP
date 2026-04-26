@@ -20,49 +20,21 @@ function cleanName(name) {
 }
 
 function getSectionNodes() {
-  const all = Array.from(document.querySelectorAll("*"));
-
-  return all
+  return Array.from(document.querySelectorAll('[role="row"], tr, .cx-MuiTableRow-root'))
     .filter((el) => {
-      const text = (el.innerText || el.textContent || "")
-        .replace(/\s+/g, " ")
-        .trim();
-
+      const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
       return /\d{2}-(LEC|LAB)\*?/.test(text);
-    })
-    .filter((el) => {
-      return !Array.from(el.children).some((child) => {
-        const childText = (child.innerText || child.textContent || "")
-          .replace(/\s+/g, " ")
-          .trim();
-
-        return /\d{2}-(LEC|LAB)\*?/.test(childText);
-      });
     });
 }
 
 function findSectionContainer(sectionNode) {
-  let el = sectionNode;
+  const row =
+    sectionNode.closest('[role="row"]') ||
+    sectionNode.closest("tr") ||
+    sectionNode.closest(".cx-MuiTableRow-root") ||
+    sectionNode.closest(".cx-MuiGrid-root");
 
-  while (el && el !== document.body) {
-    const text = (el.innerText || el.textContent || "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const hasSection = /\d{2}-(LEC|LAB)\*?/.test(text);
-    const hasUsefulContent =
-      text.includes("Instructor:") ||
-      text.includes("View Details") ||
-      text.includes("Rm") ||
-      text.includes("pm") ||
-      text.includes("am");
-
-    if (hasSection && hasUsefulContent) {
-      return el;
-    }
-
-    el = el.parentElement;
-  }
+  if (row) return row;
 
   return sectionNode.parentElement;
 }
@@ -160,7 +132,7 @@ function ensureSummaryModal() {
         font-family:Arial, sans-serif;
       ">
       <div class="broncosort-summary-header"
-        style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px;">
+        style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:12px;">
         <div>
           <div class="broncosort-summary-title" style="font-size:22px; font-weight:700; color:#1f3b64;">Overview</div>
           <div id="broncosort-summary-subtitle" class="broncosort-summary-subtitle"
@@ -176,7 +148,23 @@ function ensureSummaryModal() {
             color:#5b6b7f;
           ">×</button>
       </div>
+
+      <div id="broncosort-tab-bar"
+        style="display:flex; gap:4px; margin-bottom:16px; border-bottom:2px solid #e3e8ef; padding-bottom:0;">
+        <button id="broncosort-tab-summary" type="button"
+          style="
+            background:none; border:none; padding:8px 16px; font-size:14px; font-weight:600;
+            cursor:pointer; color:#1f3b64; border-bottom:2px solid #1f3b64; margin-bottom:-2px;
+          ">Summary</button>
+        <button id="broncosort-tab-wordcloud" type="button"
+          style="
+            background:none; border:none; padding:8px 16px; font-size:14px; font-weight:600;
+            cursor:pointer; color:#5b6b7f; border-bottom:2px solid transparent; margin-bottom:-2px;
+          ">Word Cloud ☁️</button>
+      </div>
+
       <div id="broncosort-summary-body" class="broncosort-summary-body"></div>
+      <div id="broncosort-wordcloud-body" style="display:none;"></div>
     </div>
   `;
 
@@ -188,6 +176,30 @@ function ensureSummaryModal() {
 
   overlay.querySelector("#broncosort-summary-close").addEventListener("click", () => {
     overlay.style.display = "none";
+  });
+
+  // Tab switching
+  const tabSummary = overlay.querySelector("#broncosort-tab-summary");
+  const tabWordCloud = overlay.querySelector("#broncosort-tab-wordcloud");
+  const summaryBody = overlay.querySelector("#broncosort-summary-body");
+  const wordcloudBody = overlay.querySelector("#broncosort-wordcloud-body");
+
+  tabSummary.addEventListener("click", () => {
+    summaryBody.style.display = "";
+    wordcloudBody.style.display = "none";
+    tabSummary.style.color = "#1f3b64";
+    tabSummary.style.borderBottomColor = "#1f3b64";
+    tabWordCloud.style.color = "#5b6b7f";
+    tabWordCloud.style.borderBottomColor = "transparent";
+  });
+
+  tabWordCloud.addEventListener("click", () => {
+    summaryBody.style.display = "none";
+    wordcloudBody.style.display = "";
+    tabWordCloud.style.color = "#1f3b64";
+    tabWordCloud.style.borderBottomColor = "#1f3b64";
+    tabSummary.style.color = "#5b6b7f";
+    tabSummary.style.borderBottomColor = "transparent";
   });
 
   return overlay;
@@ -232,13 +244,111 @@ function renderSummaryBody(summary) {
   ].join("");
 }
 
+function renderWordCloud(words, container) {
+  if (!words || words.length === 0) {
+    container.innerHTML = `<p style="color:#5b6b7f; text-align:center; padding:40px 0;">No word data available.</p>`;
+    return;
+  }
+
+  const maxCount = words[0].count;
+  const minCount = words[words.length - 1].count;
+  const minSize = 13;
+  const maxSize = 42;
+
+  const colorMap = {
+    positive: ["#2e7d32", "#388e3c", "#43a047", "#1b5e20"],
+    negative: ["#c62828", "#d32f2f", "#e53935", "#b71c1c"],
+    neutral:  ["#1565c0", "#1976d2", "#0277bd", "#283593", "#4527a0", "#6a1b9a"]
+  };
+
+  // Shuffle so same-sized words aren't clumped
+  const shuffled = [...words].sort(() => Math.random() - 0.5);
+
+  const cloudDiv = document.createElement("div");
+  Object.assign(cloudDiv.style, {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px 14px",
+    padding: "24px 16px",
+    lineHeight: "1"
+  });
+
+  for (const { word, count, sentiment } of shuffled) {
+    const range = maxCount === minCount ? 1 : maxCount - minCount;
+    const size = minSize + ((count - minCount) / range) * (maxSize - minSize);
+
+    const palette = colorMap[sentiment] || colorMap.neutral;
+    const color = palette[Math.floor(Math.random() * palette.length)];
+
+    const span = document.createElement("span");
+    span.textContent = word;
+    Object.assign(span.style, {
+      fontSize: `${size.toFixed(1)}px`,
+      fontWeight: size > 28 ? "700" : size > 18 ? "600" : "500",
+      color,
+      cursor: "default",
+      transition: "transform 0.15s ease, opacity 0.15s ease",
+      display: "inline-block",
+      opacity: "0.88"
+    });
+
+    span.title = `"${word}" — mentioned ${count} time${count !== 1 ? "s" : ""}`;
+
+    span.onmouseenter = () => {
+      span.style.transform = "scale(1.18)";
+      span.style.opacity = "1";
+    };
+    span.onmouseleave = () => {
+      span.style.transform = "scale(1)";
+      span.style.opacity = "0.88";
+    };
+
+    cloudDiv.appendChild(span);
+  }
+
+  // Legend
+  const legend = document.createElement("div");
+  Object.assign(legend.style, {
+    display: "flex",
+    gap: "18px",
+    justifyContent: "center",
+    marginTop: "20px",
+    fontSize: "12px",
+    color: "#5b6b7f"
+  });
+  legend.innerHTML = `
+    <span><span style="color:#2e7d32; font-weight:700;">■</span> Positive</span>
+    <span><span style="color:#c62828; font-weight:700;">■</span> Negative</span>
+    <span><span style="color:#1565c0; font-weight:700;">■</span> Neutral</span>
+    <span style="margin-left:8px; opacity:0.7;">Hover a word to see count · Size = frequency</span>
+  `;
+
+  container.innerHTML = "";
+  container.appendChild(cloudDiv);
+  container.appendChild(legend);
+}
+
 async function openSummaryModal(professorName, ratingInfo = null) {
   const overlay = ensureSummaryModal();
   const subtitle = overlay.querySelector("#broncosort-summary-subtitle");
   const body = overlay.querySelector("#broncosort-summary-body");
+  const wordcloudBody = overlay.querySelector("#broncosort-wordcloud-body");
+  const tabSummary = overlay.querySelector("#broncosort-tab-summary");
+  const tabWordCloud = overlay.querySelector("#broncosort-tab-wordcloud");
+
+  // Always reset to Summary tab when opening
+  body.style.display = "";
+  wordcloudBody.style.display = "none";
+  tabSummary.style.color = "#1f3b64";
+  tabSummary.style.borderBottomColor = "#1f3b64";
+  tabWordCloud.style.color = "#5b6b7f";
+  tabWordCloud.style.borderBottomColor = "transparent";
 
   subtitle.textContent = `${professorName}${ratingInfo?.rating ? ` • ⭐ ${ratingInfo.rating}` : ""}`;
   body.innerHTML = "<p style='margin:0;'>Loading summary...</p>";
+  wordcloudBody.innerHTML = "<p style='margin:0; text-align:center; padding:40px 0; color:#5b6b7f;'>Loading word cloud...</p>";
   overlay.style.display = "flex";
 
   try {
@@ -275,6 +385,9 @@ async function openSummaryModal(professorName, ratingInfo = null) {
         <h4 style="margin:0; font-size:15px; color:#1f3b64;">Overview</h4>
         <p style="margin:8px 0 0 0; line-height:1.5;">${overview}</p>
       </section>` + renderSummaryBody(summary);
+
+    // Render word cloud if backend returned frequency data
+    renderWordCloud(data.wordFrequency || [], wordcloudBody);
   } catch (err) {
     const summary = fallbackSummary(`Summary request failed: ${err.message}`);
     body.innerHTML =
