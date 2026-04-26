@@ -4,8 +4,7 @@ const {
 } = require("../services/rmpService");
 
 const {
-  summarizeProfessorReviews,
-  extractWordFrequency
+  summarizeProfessorReviews
 } = require("../services/groqService");
 
 // Short-lived bundle cache so summary + wordcloud don't both hit RMP
@@ -83,6 +82,8 @@ async function getProfessorSummary(req, res) {
           overview: "Professor match not found for this school.",
           teachingStyle: "Not enough review data",
           workloadAndGrading: "Not enough review data",
+          studentTips: "Not enough review data",
+          bestFit: "Not enough review data",
           pros: ["Not enough review data"],
           cons: ["Not enough review data"],
           confidenceNote: "No matching professor record was found."
@@ -113,6 +114,8 @@ async function getProfessorSummary(req, res) {
         overview: "Could not generate summary right now.",
         teachingStyle: "Not enough review data",
         workloadAndGrading: "Not enough review data",
+        studentTips: "Not enough review data",
+        bestFit: "Not enough review data",
         pros: ["Not enough review data"],
         cons: ["Not enough review data"],
         confidenceNote: "Try again after verifying your backend and API keys."
@@ -137,10 +140,14 @@ async function getProfessorWordCloud(req, res) {
       return res.json({ wordFrequency: [] });
     }
 
-    const reviews = Array.isArray(bundle.reviews) ? bundle.reviews : [];
-    const wordFrequency = extractWordFrequency(reviews);
+    const summary = await summarizeProfessorReviews({
+      ...bundle,
+      reviews: Array.isArray(bundle.reviews) ? bundle.reviews : []
+    });
 
-    return res.json({ wordFrequency });
+    return res.json({
+      wordFrequency: summary.wordFrequency || []
+    });
   } catch (error) {
     console.error("Word cloud error:", error);
     return res.status(500).json({ wordFrequency: [] });
