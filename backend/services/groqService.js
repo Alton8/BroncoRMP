@@ -86,22 +86,26 @@ function setCached(profId, data) {
   cache.set(profId, { ...data, ts: Date.now() });
 }
 
-let _ai = null;
-function getGeminiClient() {
-  if (_ai) return _ai;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  _ai = new GoogleGenAI({ apiKey });
-  return _ai;
+let _backendAi = null;
+function getGeminiClient(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (!key) return null;
+
+  if (process.env.GEMINI_API_KEY && key === process.env.GEMINI_API_KEY) {
+    if (!_backendAi) _backendAi = new GoogleGenAI({ apiKey: key });
+    return _backendAi;
+  }
+
+  return new GoogleGenAI({ apiKey: key });
 }
 
 function getModelName() {
   return process.env.GEMINI_MODEL || "gemini-2.5-flash";
 }
 
-async function generateJson({ prompt, schema, temperature = 0 }) {
-  const ai = getGeminiClient();
-  if (!ai) throw new Error("Missing GEMINI_API_KEY");
+async function generateJson({ prompt, schema, temperature = 0, apiKey }) {
+  const ai = getGeminiClient(apiKey);
+  if (!ai) throw new Error("Missing Gemini API key");
 
   const response = await ai.models.generateContent({
     model: getModelName(),
@@ -181,15 +185,7 @@ function fallbackSummary(bundle) {
   };
 }
 
-async function summarizeProfessorReviews(bundle) {
-  // Check cache first
-  const cacheKey = bundle.id ? String(bundle.id) : bundle.profName;
-  const cached = getCached(cacheKey);
-  if (cached) {
-    console.log(`Cache hit for ${bundle.profName}`);
-    return cached;
-  }
-
+async function summarizeProfessorReviews(bundle, options = {}) {
   // Word frequency is pure JS — always fast, run immediately
   const wordFrequency = extractWordFrequency(bundle.reviews);
 
@@ -197,20 +193,31 @@ async function summarizeProfessorReviews(bundle) {
     return { ...fallbackSummary(bundle), wordFrequency };
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  const apiKey = String(options.apiKey || "").trim();
+  if (!apiKey) {
     return {
       ...fallbackSummary(bundle),
-      overview: `Found ${bundle.reviews.length} reviews but GEMINI_API_KEY is missing.`,
-      confidenceNote: "Add GEMINI_API_KEY to your environment variables and redeploy.",
+      overview: `Found ${bundle.reviews.length} reviews but Gemini credentials are missing.`,
+      confidenceNote: "Enter your Gemini API key or the shared access password.",
       wordFrequency
     };
+  }
+
+  // Check cache only after access has been provided.
+  const cacheId = bundle.id ? String(bundle.id) : bundle.profName;
+  const cacheKey = `${options.cacheScope || "default"}:${cacheId}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    console.log(`Cache hit for ${bundle.profName}`);
+    return cached;
   }
 
   try {
     const parsed = await generateJson({
       prompt: buildPrompt(bundle),
       schema: SUMMARY_SCHEMA,
-      temperature: 0.2
+      temperature: 0.2,
+      apiKey
     });
 
     const result = {
@@ -227,6 +234,10 @@ async function summarizeProfessorReviews(bundle) {
     return result;
   } catch (error) {
     console.error("Gemini summarization error:", error);
+    if (options.failOnGeminiError) {
+      error.wordFrequency = wordFrequency;
+      throw error;
+    }
     return { ...fallbackSummary(bundle), wordFrequency };
   }
 }

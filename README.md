@@ -8,7 +8,7 @@ BroncoRMP is a Chrome extension that integrates professor ratings from Rate My P
 
 - **Automatic Professor Lookup**: Extracts professor names from the Cal Poly Pomona CMS course schedule
 - **Rate My Professors Integration**: Fetches real-time ratings, difficulty scores, and review summaries
-- **AI-Powered Review Analysis**: Uses Groq AI to generate concise summaries of professor reviews
+- **AI-Powered Review Analysis**: Uses Gemini to generate concise summaries of professor reviews
 - **Seamless UI Integration**: Displays professor information directly in the course registration interface
 - **Smart Name Matching**: Intelligently handles duplicate names and formatting variations
 
@@ -18,7 +18,7 @@ BroncoRMP is a Chrome extension that integrates professor ratings from Rate My P
 2. **Background Service** (`background.js`): Handles cross-origin requests to Rate My Professors
 3. **Backend API**: A Node.js/Express server that:
    - Queries the Rate My Professors API for professor data
-   - Analyzes reviews using Groq AI to generate keyword summaries
+   - Analyzes reviews using Gemini to generate keyword summaries
    - Caches results for better performance
 4. **Storage** (`storage.js`): Manages local caching to minimize API calls
 
@@ -71,13 +71,21 @@ npm install
 npm start
 ```
 
+The AI summary endpoint accepts either a user's Gemini key or a shared access password. Configure these backend environment variables before deploying:
+
+```bash
+GEMINI_API_KEY=your_backend_gemini_key
+GEMINI_ACCESS_PASSWORD=your_shared_password
+GEMINI_MODEL=gemini-2.5-flash
+```
+
 ## Technologies Used
 
 - **Chrome Extension API** (Manifest v3)
 - **Node.js** - Backend server
 - **Express.js** - REST API framework
 - **Rate My Professors Client** - Professor data source
-- **Groq SDK** - AI-powered review analysis
+- **Gemini SDK** - AI-powered review analysis
 - **CORS** - Cross-origin requests handling
 
 ## License

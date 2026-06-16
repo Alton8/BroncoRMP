@@ -3,7 +3,177 @@ console.log("content.js loaded");
 const USE_LOCAL = false;
 const REMOTE_API_BASE = "https://backend-u12d.onrender.com";
 const API_BASE = USE_LOCAL ? "http://localhost:3000" : REMOTE_API_BASE;
+const GEMINI_API_KEY_STORAGE_KEY = "geminiApiKey";
 
+let sessionAccessPassword = "";
+
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
+}
+
+function getLocalStorageArea() {
+  if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) {
+    return null;
+  }
+  return chrome.storage.local;
+}
+
+function getStoredGeminiApiKey() {
+  return new Promise((resolve) => {
+    const storage = getLocalStorageArea();
+    if (!storage) {
+      resolve("");
+      return;
+    }
+
+    storage.get(GEMINI_API_KEY_STORAGE_KEY, (result) => {
+      resolve(String(result[GEMINI_API_KEY_STORAGE_KEY] || "").trim());
+    });
+  });
+}
+
+function saveStoredGeminiApiKey(apiKey) {
+  return new Promise((resolve) => {
+    const storage = getLocalStorageArea();
+    if (!storage) {
+      resolve();
+      return;
+    }
+
+    storage.set({ [GEMINI_API_KEY_STORAGE_KEY]: apiKey }, resolve);
+  });
+}
+
+function clearStoredGeminiApiKey() {
+  return new Promise((resolve) => {
+    const storage = getLocalStorageArea();
+    if (!storage) {
+      resolve();
+      return;
+    }
+
+    storage.remove(GEMINI_API_KEY_STORAGE_KEY, resolve);
+  });
+}
+
+function credentialPayload(credentials) {
+  if (!credentials) return {};
+  if (credentials.type === "user_key") return { geminiApiKey: credentials.value };
+  if (credentials.type === "access_password") return { accessPassword: credentials.value };
+  return {};
+}
+
+function promptForAiAccess(container, options = {}) {
+  const message = options.message || "";
+
+  return new Promise((resolve) => {
+    container.innerHTML = `
+      <section style="margin-bottom:16px; padding:16px; border:1px solid #e3e8ef; border-radius:12px; background:#fafcff;">
+        <h4 style="margin:0; font-size:15px; color:#1f3b64;">AI access</h4>
+        ${message ? `<p style="margin:8px 0 0 0; line-height:1.5; color:#9b1c1c;">${escapeHtml(message)}</p>` : ""}
+        <form id="classview-ai-access-form" style="margin-top:14px; display:grid; gap:12px;">
+          <label style="display:grid; gap:6px; color:#25364a; font-size:13px; font-weight:600;">
+            Gemini API key
+            <input id="classview-gemini-api-key" type="password" autocomplete="off" placeholder="AIza..."
+              style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cfd8e3; border-radius:8px; font-size:14px;">
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; color:#5b6b7f; font-size:13px;">
+            <input id="classview-remember-gemini-key" type="checkbox" style="margin:0;">
+            Remember my Gemini key on this browser
+          </label>
+          <div style="display:flex; align-items:center; gap:10px; color:#7a8797; font-size:12px; font-weight:700; text-transform:uppercase;">
+            <span style="height:1px; flex:1; background:#e3e8ef;"></span>
+            or
+            <span style="height:1px; flex:1; background:#e3e8ef;"></span>
+          </div>
+          <label style="display:grid; gap:6px; color:#25364a; font-size:13px; font-weight:600;">
+            Shared password
+            <input id="classview-access-password" type="password" autocomplete="off"
+              style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cfd8e3; border-radius:8px; font-size:14px;">
+          </label>
+          <div id="classview-ai-access-error" style="min-height:18px; color:#9b1c1c; font-size:13px;"></div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+            <button id="classview-clear-gemini-key" type="button"
+              style="border:1px solid #cfd8e3; background:#fff; color:#41546b; border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer;">
+              Forget saved key
+            </button>
+            <button type="submit"
+              style="border:none; background:#1f3b64; color:#fff; border-radius:8px; padding:9px 14px; font-size:13px; font-weight:700; cursor:pointer;">
+              Continue
+            </button>
+          </div>
+        </form>
+      </section>
+    `;
+
+    const form = container.querySelector("#classview-ai-access-form");
+    const keyInput = container.querySelector("#classview-gemini-api-key");
+    const passwordInput = container.querySelector("#classview-access-password");
+    const rememberInput = container.querySelector("#classview-remember-gemini-key");
+    const error = container.querySelector("#classview-ai-access-error");
+    const clearButton = container.querySelector("#classview-clear-gemini-key");
+
+    keyInput.focus();
+
+    clearButton.addEventListener("click", async () => {
+      await clearStoredGeminiApiKey();
+      sessionAccessPassword = "";
+      error.textContent = "Saved key cleared.";
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const apiKey = keyInput.value.trim();
+      const accessPassword = passwordInput.value.trim();
+
+      if (!apiKey && !accessPassword) {
+        error.textContent = "Enter a Gemini API key or the shared password.";
+        return;
+      }
+
+      if (apiKey) {
+        if (rememberInput.checked) {
+          await saveStoredGeminiApiKey(apiKey);
+        }
+        resolve({ type: "user_key", value: apiKey });
+        return;
+      }
+
+      sessionAccessPassword = accessPassword;
+      resolve({ type: "access_password", value: accessPassword });
+    });
+  });
+}
+
+async function getAiCredentials(container) {
+  const storedApiKey = await getStoredGeminiApiKey();
+  if (storedApiKey) {
+    return { type: "user_key", value: storedApiKey, stored: true };
+  }
+
+  if (sessionAccessPassword) {
+    return { type: "access_password", value: sessionAccessPassword };
+  }
+
+  return promptForAiAccess(container);
+}
+
+async function readErrorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    return data.error || fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
 
 function cleanName(name) {
   name = (name || "").replace(/\s+/g, " ").trim();
@@ -343,29 +513,55 @@ async function openSummaryModal(professorName, ratingInfo = null) {
   tabWordCloud.style.borderBottomColor = "transparent";
 
   subtitle.textContent = `${professorName}${ratingInfo?.rating ? ` • ⭐ ${ratingInfo.rating}` : ""}`;
-  body.innerHTML = "<p style='margin:0;'>Loading summary...</p>";
-  wordcloudBody.innerHTML = "<p style='margin:0; text-align:center; padding:40px 0; color:#5b6b7f;'>Loading word cloud...</p>";
+  body.innerHTML = "";
+  wordcloudBody.innerHTML = "<p style='margin:0; text-align:center; padding:40px 0; color:#5b6b7f;'>Complete AI access to load the word cloud.</p>";
   overlay.style.display = "flex";
 
+  let credentials = await getAiCredentials(body);
+  if (!credentials) return;
+
   try {
-    const res = await fetch(`${API_BASE}/api/professor/summary`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        school: "Cal Poly Pomona",
-        professor: professorName
-      })
-    });
+    let res = null;
+    let authErrorMessage = "";
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      body.innerHTML = "<p style='margin:0;'>Loading summary...</p>";
+      wordcloudBody.innerHTML = "<p style='margin:0; text-align:center; padding:40px 0; color:#5b6b7f;'>Loading word cloud...</p>";
+
+      res = await fetch(`${API_BASE}/api/professor/summary`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          school: "Cal Poly Pomona",
+          professor: professorName,
+          ...credentialPayload(credentials)
+        })
+      });
+
+      if (res.status !== 401) break;
+
+      authErrorMessage = await readErrorMessage(res, "Invalid Gemini access. Try again.");
+      if (credentials.type === "access_password") sessionAccessPassword = "";
+      if (credentials.type === "user_key" && credentials.stored) await clearStoredGeminiApiKey();
+      if (attempt === 2) break;
+
+      credentials = await promptForAiAccess(body, { message: authErrorMessage });
+      if (!credentials) return;
+    }
 
     if (!res.ok) {
-      const summary = fallbackSummary(`Summary request failed: ${res.status}`);
+      const message = res.status === 401
+        ? authErrorMessage || "Invalid Gemini access."
+        : await readErrorMessage(res, `Summary request failed: ${res.status}`);
+      const summary = fallbackSummary(message);
       body.innerHTML =
         `<section style="margin-bottom:16px; padding:14px; border:1px solid #e3e8ef; border-radius:12px; background:#fafcff;">
           <h4 style="margin:0; font-size:15px; color:#1f3b64;">Overview</h4>
-          <p style="margin:8px 0 0 0; line-height:1.5;">${summary.overview}</p>
+          <p style="margin:8px 0 0 0; line-height:1.5;">${escapeHtml(summary.overview)}</p>
         </section>` + renderSummaryBody(summary);
+      wordcloudBody.innerHTML = "<p style='color:#5b6b7f; text-align:center; padding:40px 0;'>No word data available.</p>";
       return;
     }
 
