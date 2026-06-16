@@ -94,7 +94,7 @@ function promptForAiAccess(container, options = {}) {
             <span style="height:1px; flex:1; background:#e3e8ef;"></span>
           </div>
           <label style="display:grid; gap:6px; color:#25364a; font-size:13px; font-weight:600;">
-            Shared password
+            Admin password
             <input id="classview-access-password" type="password" autocomplete="off"
               style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cfd8e3; border-radius:8px; font-size:14px;">
           </label>
@@ -135,7 +135,7 @@ function promptForAiAccess(container, options = {}) {
       const accessPassword = passwordInput.value.trim();
 
       if (!apiKey && !accessPassword) {
-        error.textContent = "Enter a Gemini API key or the shared password.";
+        error.textContent = "Enter a Gemini API key or the admin password.";
         return;
       }
 
